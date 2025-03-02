@@ -1,11 +1,11 @@
 const Group = require('../models/Group');
-const group = require('../models/Group')
+
 
 
 exports.creategroup = async(req,res)=>{
     try{
         const {name} = req.body;
-        const creategroup = await group.create({
+        const creategroup = await Group.create({
             name:name,
             admin : req.user._id,
         })
@@ -20,9 +20,8 @@ exports.creategroup = async(req,res)=>{
 exports.getgroups = async(req,res) =>{
     try{
         const userId = req.user._id
-        console.log("User ID:", userId);
 
-        const groups = await group.find({
+        const groups = await Group.find({
             $or: [{ admin: userId }, { members: { $in: [userId] } }]
         });
 
@@ -49,7 +48,7 @@ exports.getgroup = async (req, res) => {
     }
 
 
-    const checkGroup = await group.findById(groupId);
+    const checkGroup = await Group.findById(groupId);
     if (!checkGroup) {
       return res.status(404).json({ message: "Group not found" });
     }
