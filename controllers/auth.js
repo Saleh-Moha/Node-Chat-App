@@ -6,13 +6,13 @@ const generateToken = require('../middelwares/generateTokens')
 
 const signup = async (req, res) => {
     try {
-        const { username, email, password } = req.body;
-        if (!username || !email || !password) {
+        const { username, email, password , role } = req.body;
+        if (!username || !email || !password || !role) {
             return res.status(400).json({ error: "All fields are required" });
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = new User({ username, email, password: hashedPassword });
+        const newUser = new User({ username, email, password: hashedPassword , role});
 
         await newUser.save();
         
@@ -51,7 +51,7 @@ const login =  async (req, res) => {
       const token = await generateToken({email:user.email , id:user._id , role:user.role })
   
       res.cookie("token", token, { httpOnly: true, secure: true, sameSite: "Strict" })
-        return res.json({ message: "Login successful",token, user });
+        return res.json({ message: "Login successful", user:`${user.email }`});
     } catch (error) {
       res.status(500).json({ error: "Internal Server Error" });
     }

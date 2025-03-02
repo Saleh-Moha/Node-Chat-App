@@ -8,7 +8,7 @@ const cookie = require("cookie");
 
 const authRoutes = require("./routes/auth.routes");
 const chatRoutes = require("./routes/chat.routes");
-const groupRoutes = require("./routes/createGroup.routes")
+const groupRoutes = require("./routes/group.routes")
 const User = require("./models/Users.model");
 const Message = require("./models/Message");
 const Group = require("./models/Group");
@@ -116,7 +116,7 @@ io.on("connection", async (socket) => {
         }
     });
 
-    // Leave Group or Channel 
+    
     socket.on("leaveRoom", ({ type, roomId }) => {
         if (type === "group") {
             socket.leave(`group_${roomId}`);
