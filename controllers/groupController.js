@@ -7,7 +7,7 @@ exports.creategroup = async(req,res)=>{
         const {name} = req.body;
         const creategroup = await Group.create({
             name:name,
-            admin : req.user._id,
+            admins : req.user._id,
         })
         res.json(creategroup)
 
@@ -70,30 +70,39 @@ exports.getgroup = async (req, res) => {
 
 
 exports.updategroup = async (req, res) => {
-  try{  
+  try {  
     const groupId = req.params.id;
     const userId = req.user._id;
+
     if (!groupId) {
       return res.status(400).json({ message: "No group ID provided" });
     }
-    
-    const findGroup = await Group.findById(groupId)
-    if(!findGroup){
-      return res.status(404).json({message:"Group not found"})
-    }
-    const check_user = findGroup.admin.includes(userId)
-    if(!check_user){
-      return res.status(403).json({message:"Only admins can update the group"})
+
+    const group = await Group.findById(groupId);
+    if (!group) {
+      return res.status(404).json({ message: "Group not found" });
     }
 
-    const allowedFields = ["name", "admin", "members"];
+    const isAdmin = group.admins.includes(userId);
+    const isMember = group.members.includes(userId);
+    const isPublic = group.group_status === "Public";
+
+    if (group.group_status === "Private" && !isAdmin) {
+      return res.status(403).json({ message: "Only admins can update this private group." });
+    }
+
+    if (group.group_status === "Public" && !isAdmin && !isMember) {
+      return res.status(403).json({ message: "Only admins and members can update this public group." });
+    }
+
+    const allowedFields = ["name", "admins", "members", "message_status"];
     const updateData = {};
+
     for (const key in req.body) {
       if (allowedFields.includes(key)) {
         updateData[key] = req.body[key];
-      }
-      else{
-        return res.status(400).json({message:"Invalid field"})
+      } else {
+        return res.status(400).json({ message: `Invalid field: ${key}` });
       }
     }
 
@@ -102,12 +111,15 @@ exports.updategroup = async (req, res) => {
       { $set: updateData },
       { new: true, runValidators: true }
     );
-    return res.status(200).json({message:"group updated"})
 
-  }catch(err){
-    res.status(500).json(err);
+    return res.status(200).json({ message: "Group updated successfully", group: updatedGroup });
+
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
   }
-}
+};
+
+
 
 
 

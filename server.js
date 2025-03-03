@@ -6,12 +6,16 @@ const jwt = require("jsonwebtoken");
 const dotenv = require("dotenv");
 const cookie = require("cookie");
 
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
 const authRoutes = require("./routes/auth.routes");
 const chatRoutes = require("./routes/chat.routes");
 const groupRoutes = require("./routes/group.routes")
 const User = require("./models/Users.model");
 const Message = require("./models/Message");
 const Group = require("./models/Group");
+const { checkPrime } = require("crypto");
+const { error } = require("console");
 
 dotenv.config();
 const app = express();
@@ -34,6 +38,23 @@ mongoose.connect(process.env.MONGO_URI)
   .catch((err) => console.error("MongoDB Error:", err));
 
 const users = {};
+
+async function generateItinerary(message) {
+    try{
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+        const prompt = message;
+
+        const result = await model.generateContent(prompt);
+        const response = result.response.text();
+        return response;
+        }catch (error) {
+            console.error("Error generating itinerary:", error);
+            return "Sorry, I couldn't generate the itinerary.";
+          }
+    
+}
 
 // WebSocket (Socket.IO) Authentication 
 io.use((socket, next) => {
@@ -58,9 +79,10 @@ io.use((socket, next) => {
     }
 });
 
-// WebSocket Events 
+
+// Websocket connection
 io.on("connection", async (socket) => {
-    console.log(`User connected: ${socket.user.id || "No User ID"}`);
+
     users[socket.user.id] = socket.id;
 
 
@@ -72,7 +94,7 @@ io.on("connection", async (socket) => {
         try {
             let newMessage;
             if (type === "private") {
-                const recipientSocket = users[roomId]; // roomId is the recipient's userId
+                const recipientSocket = users[roomId]; 
                 user = User.findById(socket.user.id)
                 newMessage = await Message.create({
                     sender: socket.user.id,
@@ -84,13 +106,34 @@ io.on("connection", async (socket) => {
                     io.to(recipientSocket).emit("receiveMessage", JSON.stringify({ sender: socket.user.id, message }));
                 }
             } else if (type === "group") {
+                const checkGroupStatus = await Group.findById(roomId);
+                if (!checkGroupStatus) {
+                    return socket.emit("error", { message: "Group not found" });
+                }
+
+                const isMember = checkGroupStatus.members.includes(socket.user.id);
+                const isAdmin = checkGroupStatus.admins.includes(socket.user.id);
+
+                if (!isMember && !isAdmin) {
+                    return socket.emit("error", { message: "You are not a member of this group" });
+                }
+
+                if (checkGroupStatus.message_status === true && !isAdmin) {
+                    return socket.emit("error", { message: "Only admins can send messages" });
+                }
+
+            // Create group message
                 newMessage = await Message.create({
                     sender: socket.user.id,
                     group: roomId,
                     content: message,
                 });
-                io.to(`group_${roomId}`).emit("receiveMessage", JSON.stringify({ sender: socket.user.id, message }));
-            } 
+
+                io.to(`group_${roomId}`).emit("receiveMessage",JSON.stringify({
+                    sender: socket.user.id,
+                    message
+                }));
+        }
 
             console.log(`[Message Sent] ${type} -> ${roomId}: ${message}`);
         } catch (error) {
@@ -103,7 +146,7 @@ io.on("connection", async (socket) => {
         try {
             if (type === "group") {
                 const group = await Group.findById(roomId);
-                if (!group || !group.members.includes(socket.user.id)&& group.admin.toString() !== socket.user.id) {
+                if (!group || !group.members.includes(socket.user.id)&& group.admins.toString() !== socket.user.id) {
                     return socket.emit("error", { message: "Not authorized to join this group" });
                 }
                 socket.join(`group_${roomId}`);
@@ -123,6 +166,21 @@ io.on("connection", async (socket) => {
         } 
         console.log(`[User Left] ${socket.user.id} left ${type} ${roomId}`);
     });
+
+    socket.on("ChatWithAI" , async(data)=> {
+        try{
+        user = socket.user.id
+        if(!data.message){
+            socket.emit("error",{message:"no message sent"});
+            return
+        }
+        const inetiary = await generateItinerary(data.message)
+        socket.emit("recieved",JSON.stringify({inetiary}))
+    }catch (error) {
+        console.error("Error processing request:", error);
+        socket.emit("error", { message: "Internal Server Error" });
+      }
+    })
 
     // Disconnect Handler
     socket.on("disconnect", () => {

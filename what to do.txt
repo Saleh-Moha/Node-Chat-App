@@ -1,0 +1,20 @@
+for today 3 mar :
+    add a groups rules:
+      only admins can send messages
+      only admins can change the groups name or image 
+
+    add a connection to AI chat With gemini
+
+    -> so i will modify roles.js file to seperate the logic that handle admins work from cntrollers (i made the logic more efficient so we do not need it)
+    -> modify group model (done)
+    -> modify the websocket permissions (done)
+    -> add a socket to chat with AI  (done)
+
+
+
+for today 4 mar:
+  add memory for AI even(in-memory , or with redis)
+  handle the proccess of adding users as admins or members to a group
+  handle the proccess of updating , deleting users from a group
+
+
