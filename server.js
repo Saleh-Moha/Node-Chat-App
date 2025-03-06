@@ -10,12 +10,17 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const authRoutes = require("./routes/auth.routes");
 const chatRoutes = require("./routes/chat.routes");
-const groupRoutes = require("./routes/group.routes")
+const groupRoutes = require("./routes/gruop/group.routes")
 const User = require("./models/Users.model");
 const Message = require("./models/Message");
 const Group = require("./models/Group");
 const { checkPrime } = require("crypto");
 const { error } = require("console");
+
+// redis
+const AIChat = require("./models/AiChat")
+const Redis = require("ioredis");
+const redis = new Redis(process.env.REDIS_URL || "redis://127.0.0.1:6379");
 
 dotenv.config();
 const app = express();
@@ -39,6 +44,26 @@ mongoose.connect(process.env.MONGO_URI)
 
 const users = {};
 
+// function to save the redis cach to db after disconnecting
+async function saveRedisToMongo(userId) {
+    const chatHistory = await redis.lrange(`chat:${userId}`, 0, -1);
+    if (!chatHistory.length) return;
+
+    let chatData = await AIChat.findOne({ userId });
+    if (!chatData) {
+        chatData = new AIChat({ userId, messages: [] });
+    }
+
+    chatHistory.forEach(msg => {
+        chatData.messages.push(JSON.parse(msg));
+    });
+
+    await chatData.save();
+    await redis.del(`chat:${userId}`);
+}
+
+
+// funciton to chat with ai
 async function generateItinerary(message) {
     try{
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_KEY);
@@ -167,24 +192,48 @@ io.on("connection", async (socket) => {
         console.log(`[User Left] ${socket.user.id} left ${type} ${roomId}`);
     });
 
-    socket.on("ChatWithAI" , async(data)=> {
-        try{
-        user = socket.user.id
-        if(!data.message){
-            socket.emit("error",{message:"no message sent"});
-            return
+    
+    socket.on("ChatWithAI", async (data) => {
+        try {
+            if (!data.message) {
+                return socket.emit("error", { message: "No message sent" });
+            }
+    
+            const userId = socket.user.id;
+            
+    
+            let chatHistory = await redis.lrange(`chat:${userId}`, -5, -1); 
+            chatHistory = chatHistory.map(JSON.parse); 
+    
+            // Format prompt with context
+            const lastMessages = chatHistory.map(msg => `${msg.role}: ${msg.content}`).join("\n");
+            const prompt = lastMessages ? `Previous messages:\n${lastMessages}\n\nUser: ${data.message}` : data.message;
+    
+    
+            const aiResponse = await generateItinerary(prompt);
+            if (!aiResponse) {
+                return socket.emit("error", { message: "AI response failed" });
+            }
+    
+            await redis.rpush(`chat:${userId}`, JSON.stringify({ role: "user", content: data.message }));
+            await redis.rpush(`chat:${userId}`, JSON.stringify({ role: "ai", content: aiResponse }));
+    
+            await redis.ltrim(`chat:${userId}`, -10, -1);
+    
+            socket.emit("recieved",JSON.stringify( { itinerary: aiResponse }));
+    
+            console.log(`[AI Response Sent] to ${userId}`);
+        } catch (error) {
+            console.error("Error processing AI request:", error);
+            socket.emit("error", { message: "Internal Server Error" });
         }
-        const inetiary = await generateItinerary(data.message)
-        socket.emit("recieved",JSON.stringify({inetiary}))
-    }catch (error) {
-        console.error("Error processing request:", error);
-        socket.emit("error", { message: "Internal Server Error" });
-      }
-    })
+    });
+    
 
     // Disconnect Handler
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async() => {
         console.log(`User disconnected: ${socket.user.id}`);
+        await saveRedisToMongo(socket.user.id);
         delete users[socket.user.id];
     });
 });

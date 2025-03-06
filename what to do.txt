@@ -12,9 +12,9 @@ for today 3 mar :
 
 
 
-for today 4 mar:
-  add memory for AI even(in-memory , or with redis)
-  handle the proccess of adding users as admins or members to a group
-  handle the proccess of updating , deleting users from a group
+for today 5 mar:
+  add memory for AI even(in-memory , or with redis) (done)
+  handle the proccess of adding users as admins or members to a group(done)
+  handle the proccess of deleting users from a group (done)
 
 
